@@ -1,0 +1,8 @@
+*.bak
+fpga/db/
+fpga/incremental_db/
+fpga/output_files/
+fpga/quaddrone.qpf
+fpga/quaddrone.qsf
+fpga/simulation/
+

@@ -1,0 +1,33 @@
+subdesign motor
+(
+  clk, go, dir, pwm : input;
+  a1, a2, b1, b2, c1, c2 : output;
+)
+variable
+  qa1, qa2, qb1, qb2, qc1, qc2 : dff;
+  start : srff;
+begin
+  start.s = go;
+  start.r = start.q;
+  start.clk = clk;
+  qa2.d = ((dir & qb1.q) # (!dir & qc1.q)) #  start;
+  qb1.d = ((dir & qc2.q) # (!dir & qa2.q)) #  start;
+  qc2.d = ((dir & qa1.q) # (!dir & qb1.q)) & !start;
+  qa1.d = ((dir & qb2.q) # (!dir & qc2.q)) & !start;
+  qb2.d = ((dir & qc1.q) # (!dir & qa1.q)) & !start;
+  qc1.d = ((dir & qa2.q) # (!dir & qb2.q)) & !start;
+  
+  qa1.clk = clk;
+  qa2.clk = clk;
+  qb1.clk = clk;
+  qb2.clk = clk;
+  qc1.clk = clk;
+  qc2.clk = clk;
+  
+  a1 = qa1.q & pwm;
+  a2 = qa2.q & pwm;
+  b1 = qb1.q & pwm;
+  b2 = qb2.q & pwm;
+  c1 = qc1.q & pwm;
+  c2 = qc2.q & pwm;
+end;
