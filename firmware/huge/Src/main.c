@@ -86,10 +86,10 @@ static void MX_USART2_UART_Init(void);
 #define DShotChannels (4)
 #define DShotWordLength (16)
 #define DShotPacketLength (DShotWordLength + 1)
-uint16_t dshot_ccr_buffer[DShotPacketLength][DShotChannels] __attribute__ ((aligned(4), section(".dma_buffer")));
-static const uint16_t DShotPeriod = 199; /* 200 - 1 */
-static const uint16_t DShotHi = 149; /* 75% of 200 - 1 */
-static const uint16_t DShotLo = 74; /* 50% of 75% of 200 - 1 */
+uint32_t dshot_ccr_buffer[DShotPacketLength][DShotChannels] __attribute__ ((aligned(4), section(".dma_buffer")));
+static const uint32_t DShotPeriod = 199; /* 200 - 1 */
+static const uint32_t DShotHi = 149; /* 75% of 200 - 1 */
+static const uint32_t DShotLo = 74; /* 50% of 75% of 200 - 1 */
 
 /* USER CODE END PFP */
 
@@ -107,7 +107,7 @@ void init_dshot()
 
 void send_channel_dshot(unsigned int channel, uint16_t pwm, unsigned int send_flag)
 {
-	uint16_t *p = &dshot_ccr_buffer[0][channel];
+	uint32_t *p = &dshot_ccr_buffer[0][channel];
 	for (int i = 15; i >= 0; --i) {
 		*p = ((pwm >> i) & 1) ? DShotHi : DShotLo;
 		p += DShotChannels;
@@ -131,7 +131,7 @@ void send_channel_dshot(unsigned int channel, uint16_t pwm, unsigned int send_fl
 void load_dshot(uint16_t pwm[4])
 {
 	for (int channel = 0; channel < DShotChannels; ++channel) {
-		uint16_t *p = &dshot_ccr_buffer[0][channel];
+		uint32_t *p = &dshot_ccr_buffer[0][channel];
 		uint16_t pulse_duration = pwm[channel];
 		for (int i = 15; i >= 0; --i) {
 			*p = ((pulse_duration >> i) & 1) ? DShotHi : DShotLo;
@@ -154,7 +154,7 @@ void fire_dshot(void)
 	dma_stream->PAR = &tim->DMAR;
 	dma_stream->CR |= (DMA_SxCR_EN);
 
-	tim->EGR = TIM_EGR_UG;
+	// tim->EGR = TIM_EGR_UG;
 }
 
 void send_dshot(uint16_t pwm[4], unsigned int send_flag)
@@ -720,7 +720,7 @@ static void MX_TIM3_Init(void)
   tim->CCER |= (TIM_CCER_CC1E | TIM_CCER_CC2E | TIM_CCER_CC3E | TIM_CCER_CC4E);
   // tim->DIER |= (TIM_DIER_UIE);
 
-  tim->DCR = (13 << TIM_DCR_DBA_Pos) | (DShotChannels << TIM_DCR_DBL_Pos); /* start at CCR1. load 4 channels */
+  tim->DCR = (13 << TIM_DCR_DBA_Pos) | ((DShotChannels - 1) << TIM_DCR_DBL_Pos); /* start at CCR1. load 4 channels */
 
   DMA_HandleTypeDef *hdma = htim3.hdma[0];
   DMA_Stream_TypeDef *dma_stream = hdma->Instance;
