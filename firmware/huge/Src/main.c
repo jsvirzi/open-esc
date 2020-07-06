@@ -85,8 +85,8 @@ static void MX_USART2_UART_Init(void);
 /* four channels, 16 bits per packet */
 #define DShotChannels (4)
 #define DShotWordLength (16)
-#define DShotPacketLength (DShotWordLength + 2)
-uint16_t dshot_arr_buffer[DShotPacketLength][DShotChannels] __attribute__ ((aligned(4), section(".dma_buffer")));
+#define DShotPacketLength (DShotWordLength + 1)
+uint16_t dshot_ccr_buffer[DShotPacketLength][DShotChannels] __attribute__ ((aligned(4), section(".dma_buffer")));
 static const uint16_t DShotPeriod = 199; /* 200 - 1 */
 static const uint16_t DShotHi = 149; /* 75% of 200 - 1 */
 static const uint16_t DShotLo = 74; /* 50% of 75% of 200 - 1 */
@@ -96,22 +96,99 @@ static const uint16_t DShotLo = 74; /* 50% of 75% of 200 - 1 */
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
 
-void send_dshot(unsigned int channel, uint16_t pwm)
+void init_dshot()
 {
-	uint16_t *p = &dshot_arr_buffer[0][channel];
+	for (int i = 0; i < DShotChannels; ++i) {
+		for (int j = 0; j < DShotPacketLength; ++j) {
+			dshot_ccr_buffer[j][i] = 0;
+		}
+	}
+}
+
+void send_channel_dshot(unsigned int channel, uint16_t pwm, unsigned int send_flag)
+{
+	uint16_t *p = &dshot_ccr_buffer[0][channel];
 	for (int i = 15; i >= 0; --i) {
 		*p = ((pwm >> i) & 1) ? DShotHi : DShotLo;
 		p += DShotChannels;
 	}
 
+	*p = 0;
+	p += DShotChannels;
+
+	if (send_flag) {
+		DMA_HandleTypeDef *hdma = htim3.hdma[0];
+		DMA_Stream_TypeDef *dma_stream = hdma->Instance;
+		dma_stream->NDTR = DShotPacketLength * DShotChannels;
+		dma_stream->CR |= (DMA_SxCR_TCIE);
+		dma_stream->CR |= (DMA_SxCR_EN);
+
+		TIM_TypeDef *tim = &htim3.Instance;
+		tim->EGR = TIM_EGR_UG;
+	}
+}
+
+void load_dshot(uint16_t pwm[4])
+{
+	for (int channel = 0; channel < DShotChannels; ++channel) {
+		uint16_t *p = &dshot_ccr_buffer[0][channel];
+		uint16_t pulse_duration = pwm[channel];
+		for (int i = 15; i >= 0; --i) {
+			*p = ((pulse_duration >> i) & 1) ? DShotHi : DShotLo;
+			p += DShotChannels;
+		}
+		*p = 0;
+	}
+}
+
+void fire_dshot(void)
+{
+	TIM_TypeDef *tim = htim3.Instance;
 	DMA_HandleTypeDef *hdma = htim3.hdma[0];
 	DMA_Stream_TypeDef *dma_stream = hdma->Instance;
+
+	dma_stream->CR &= ~(DMA_SxCR_EN);
 	dma_stream->NDTR = DShotPacketLength * DShotChannels;
 	dma_stream->CR |= (DMA_SxCR_TCIE);
+	dma_stream->M0AR = dshot_ccr_buffer;
+	dma_stream->PAR = &tim->DMAR;
 	dma_stream->CR |= (DMA_SxCR_EN);
 
-	TIM_TypeDef *tim = &htim3.Instance;
 	tim->EGR = TIM_EGR_UG;
+}
+
+void send_dshot(uint16_t pwm[4], unsigned int send_flag)
+{
+	load_dshot(pwm);
+	if (send_flag) { fire_dshot(); }
+
+#if 0
+	for (int channel = 0; channel < DShotChannels; ++channel) {
+		uint16_t *p = &dshot_ccr_buffer[0][channel];
+		uint16_t pulse_duration = pwm[channel];
+		for (int i = 15; i >= 0; --i) {
+			*p = ((pulse_duration >> i) & 1) ? DShotHi : DShotLo;
+			p += DShotChannels;
+		}
+	}
+
+	*p = 0;
+	p += DShotChannels;
+
+	*p = 0;
+	p += DShotChannels;
+
+	if (send_flag) {
+		DMA_HandleTypeDef *hdma = htim3.hdma[0];
+		DMA_Stream_TypeDef *dma_stream = hdma->Instance;
+		dma_stream->NDTR = DShotPacketLength * DShotChannels;
+		dma_stream->CR |= (DMA_SxCR_TCIE);
+		dma_stream->CR |= (DMA_SxCR_EN);
+
+		TIM_TypeDef *tim = &htim3.Instance;
+		tim->EGR = TIM_EGR_UG;
+	}
+#endif
 }
 
 /* USER CODE END 0 */
@@ -159,14 +236,22 @@ int main(void)
   MX_USART2_UART_Init();
   /* USER CODE BEGIN 2 */
 
+  init_dshot();
+
+  uint16_t pwm[4];
+  pwm[0] = 0xaaaa;
+  pwm[1] = 0x5555;
+  pwm[2] = 0xcccc;
+  pwm[3] = 0x3333;
+  load_dshot(pwm);
+
   /* USER CODE END 2 */
 
   /* Infinite loop */
   /* USER CODE BEGIN WHILE */
   while (1)
   {
-	  uint16_t pwm = 0xaaaa;
-	  send_dshot(0, pwm);
+	  fire_dshot();
 	  HAL_Delay(100);
 
     /* USER CODE END WHILE */
@@ -628,22 +713,22 @@ static void MX_TIM3_Init(void)
   TIM_TypeDef *tim = TIM3;
   tim->CR1 &= ~(TIM_CR1_CEN);
   tim->ARR = DShotPeriod;
-  tim->CCR1 = 2; // 20 - 1;
-  tim->CCR2 = 2; // 150 - 1; /* 1 */
-  tim->CCR3 = 2; // 75 - 1; /* 1 */
-  tim->CCR4 = 2;
+  tim->CCR1 = 0; // 20 - 1;
+  tim->CCR2 = 0; // 150 - 1; /* 1 */
+  tim->CCR3 = 0; // 75 - 1; /* 1 */
+  tim->CCR4 = 0;
   tim->CCER |= (TIM_CCER_CC1E | TIM_CCER_CC2E | TIM_CCER_CC3E | TIM_CCER_CC4E);
   // tim->DIER |= (TIM_DIER_UIE);
 
-  tim->DCR = (13 << TIM_DCR_DBA_Pos) | (4 << TIM_DCR_DBL_Pos); /* start at CCR1. load 4 channels */
+  tim->DCR = (13 << TIM_DCR_DBA_Pos) | (DShotChannels << TIM_DCR_DBL_Pos); /* start at CCR1. load 4 channels */
 
   DMA_HandleTypeDef *hdma = htim3.hdma[0];
   DMA_Stream_TypeDef *dma_stream = hdma->Instance;
   dma_stream->PAR = &tim->DMAR;
-  dma_stream->M0AR = dshot_arr_buffer;
+  dma_stream->M0AR = dshot_ccr_buffer;
   dma_stream->NDTR = DShotChannels * DShotPacketLength;
 
-  tim->CR1 |= (TIM_CR1_ARPE);
+  tim->CR1 &= ~(TIM_CR1_ARPE);
 
   tim->CR2 |= (TIM_CR2_CCDS); /* send dma request when update occurs */
 
