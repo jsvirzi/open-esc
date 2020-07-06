@@ -82,10 +82,34 @@ static void MX_I2S2_Init(void);
 static void MX_USART2_UART_Init(void);
 /* USER CODE BEGIN PFP */
 
+/* four channels, 16 bits per packet */
+#define DShotChannels (4)
+#define DShotWordLength (16)
+#define DShotPacketLength (DShotWordLength + 2)
+uint16_t dshot_arr_buffer[DShotPacketLength][DShotChannels];
+static const uint16_t DShotPeriod = 199; /* 200 - 1 */
+static const uint16_t DShotHi = 149; /* 75% of 200 - 1 */
+static const uint16_t DShotLo = 74; /* 50% of 75% of 200 - 1 */
+
 /* USER CODE END PFP */
 
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
+
+void send_dshot(unsigned int channel, uint16_t pwm)
+{
+	uint16_t *p = &dshot_arr_buffer[0][channel];
+	for (int i = 15; i >= 0; --i) {
+		*p = ((pwm >> i) & 1) ? DShotHi : DShotLo;
+		p += DShotChannels;
+	}
+
+	DMA_HandleTypeDef *hdma = htim3.hdma;
+	DMA_Stream_TypeDef *dma_stream = hdma->StreamBaseAddress;
+	dma_stream->NDTR = DShotPacketLength * DShotChannels;
+	dma_stream->CR |= (DMA_SxCR_TCIE);
+	dma_stream->CR |= (DMA_SxCR_EN);
+}
 
 /* USER CODE END 0 */
 
@@ -138,6 +162,10 @@ int main(void)
   /* USER CODE BEGIN WHILE */
   while (1)
   {
+	  uint16_t pwm = 0xaaaa;
+	  send_dshot(0, pwm);
+	  HAL_Delay(100);
+
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
@@ -596,12 +624,29 @@ static void MX_TIM3_Init(void)
 
   TIM_TypeDef *tim = TIM3;
   tim->CR1 &= ~(TIM_CR1_CEN);
-  tim->CCR1 = 20 - 1;
-  tim->CCR2 = 150 - 1; /* 1 */
-  tim->CCR3 = 150 - 1; /* 1 */
-  tim->CCER |= (TIM_CCER_CC1E | TIM_CCER_CC2E | TIM_CCER_CC3E);
-  tim->DIER |= (TIM_DIER_UIE);
+  tim->ARR = DShotPeriod;
+  tim->CCR1 = 0; // 20 - 1;
+  tim->CCR2 = 0; // 150 - 1; /* 1 */
+  tim->CCR3 = 0; // 75 - 1; /* 1 */
+  tim->CCR4 = 0;
+  tim->CCER |= (TIM_CCER_CC1E | TIM_CCER_CC2E | TIM_CCER_CC3E | TIM_CCER_CC4E);
+  // tim->DIER |= (TIM_DIER_UIE);
+
+  tim->DCR = (13 << TIM_DCR_DBA_Pos) | (4 << TIM_DCR_DBL_Pos); /* start at CCR1. load 4 channels */
+
+  DMA_HandleTypeDef *hdma = htim3.hdma;
+  DMA_Stream_TypeDef *dma_stream = hdma->StreamBaseAddress;
+  dma_stream->PAR = &tim->DMAR;
+  dma_stream->M0AR = dshot_arr_buffer;
+  dma_stream->NDTR = DShotChannels * DShotPacketLength;
+
+  tim->CR1 |= (TIM_CR1_ARPE);
+
+  tim->CR2 |= (TIM_CR2_CCDS); /* send dma request when update occurs */
+
   tim->CR1 |= (TIM_CR1_CEN);
+
+  tim->DIER |= (TIM_DIER_UDE); /* enable dma request for updates */
 
   /* USER CODE END TIM3_Init 2 */
   HAL_TIM_MspPostInit(&htim3);
