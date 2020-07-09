@@ -54,7 +54,15 @@ TIM_HandleTypeDef htim3;
 TIM_HandleTypeDef htim4;
 TIM_HandleTypeDef htim5;
 TIM_HandleTypeDef htim8;
+DMA_HandleTypeDef hdma_tim2_ch1;
+DMA_HandleTypeDef hdma_tim2_ch2;
+DMA_HandleTypeDef hdma_tim2_ch3;
+DMA_HandleTypeDef hdma_tim2_ch4;
 DMA_HandleTypeDef hdma_tim3_up;
+DMA_HandleTypeDef hdma_tim5_ch1;
+DMA_HandleTypeDef hdma_tim5_ch2;
+DMA_HandleTypeDef hdma_tim5_ch3;
+DMA_HandleTypeDef hdma_tim5_ch4;
 
 UART_HandleTypeDef huart1;
 UART_HandleTypeDef huart2;
@@ -87,6 +95,7 @@ static void MX_USART2_UART_Init(void);
 #define DShotWordLength (16)
 #define DShotPacketLength (DShotWordLength + 1)
 uint32_t dshot_ccr_buffer[DShotPacketLength][DShotChannels] __attribute__ ((aligned(4), section(".dma_buffer")));
+uint32_t dshot_incoming_buffer[DShotChannels][DShotWordLength] __attribute__ ((aligned(4), section(".dma_buffer")));
 static const uint32_t DShotPeriod = 199; /* 200 - 1 */
 static const uint32_t DShotHi = 149; /* 75% of 200 - 1 */
 static const uint32_t DShotLo = 74; /* 50% of 75% of 200 - 1 */
@@ -101,6 +110,12 @@ void init_dshot()
 	for (int i = 0; i < DShotChannels; ++i) {
 		for (int j = 0; j < DShotPacketLength; ++j) {
 			dshot_ccr_buffer[j][i] = 0;
+		}
+	}
+
+	for (int i = 0; i < DShotChannels; ++i) {
+		for (int j = 0; j < DShotWordLength; ++j) {
+			dshot_incoming_buffer[i][j] = 0;
 		}
 	}
 }
@@ -143,8 +158,9 @@ void load_dshot(uint16_t pwm[4])
 
 void fire_dshot(void)
 {
-	TIM_TypeDef *tim = htim3.Instance;
-	DMA_HandleTypeDef *hdma = htim3.hdma[0];
+	TIM_HandleTypeDef *htim = &htim3;
+	TIM_TypeDef *tim = htim->Instance;
+	DMA_HandleTypeDef *hdma = htim->hdma[0];
 	DMA_Stream_TypeDef *dma_stream = hdma->Instance;
 
 	dma_stream->CR &= ~(DMA_SxCR_EN);
@@ -161,34 +177,55 @@ void send_dshot(uint16_t pwm[4], unsigned int send_flag)
 {
 	load_dshot(pwm);
 	if (send_flag) { fire_dshot(); }
+}
 
-#if 0
-	for (int channel = 0; channel < DShotChannels; ++channel) {
-		uint16_t *p = &dshot_ccr_buffer[0][channel];
-		uint16_t pulse_duration = pwm[channel];
-		for (int i = 15; i >= 0; --i) {
-			*p = ((pulse_duration >> i) & 1) ? DShotHi : DShotLo;
-			p += DShotChannels;
-		}
-	}
+void recv_dshot()
+{
+	TIM_HandleTypeDef *htim = &htim2;
+	TIM_TypeDef *tim = htim->Instance;
+	DMA_HandleTypeDef *hdma;
+	DMA_Stream_TypeDef *dma_stream;
+	const int Tim2Chan1DmaIndex = 1;
+	const int Tim2Chan2DmaIndex = 2;
+	const int Tim2Chan3DmaIndex = 3;
+	const int Tim2Chan4DmaIndex = 4;
 
-	*p = 0;
-	p += DShotChannels;
+	hdma = htim->hdma[Tim2Chan1DmaIndex];
+	dma_stream = hdma->Instance;
+	dma_stream->CR &= ~(DMA_SxCR_EN);
+	dma_stream->NDTR = DShotPacketLength;
+	dma_stream->CR |= (DMA_SxCR_TCIE);
+	dma_stream->M0AR = dshot_incoming_buffer[0];
+	dma_stream->PAR = &tim->CCR1;
+	dma_stream->CR |= (DMA_SxCR_EN);
 
-	*p = 0;
-	p += DShotChannels;
+	hdma = htim->hdma[Tim2Chan2DmaIndex];
+	dma_stream = hdma->Instance;
+	dma_stream->CR &= ~(DMA_SxCR_EN);
+	dma_stream->NDTR = DShotPacketLength;
+	dma_stream->CR |= (DMA_SxCR_TCIE);
+	dma_stream->M0AR = dshot_incoming_buffer[1];
+	dma_stream->PAR = &tim->CCR2;
+	dma_stream->CR |= (DMA_SxCR_EN);
 
-	if (send_flag) {
-		DMA_HandleTypeDef *hdma = htim3.hdma[0];
-		DMA_Stream_TypeDef *dma_stream = hdma->Instance;
-		dma_stream->NDTR = DShotPacketLength * DShotChannels;
-		dma_stream->CR |= (DMA_SxCR_TCIE);
-		dma_stream->CR |= (DMA_SxCR_EN);
+	hdma = htim->hdma[Tim2Chan3DmaIndex];
+	dma_stream = hdma->Instance;
+	dma_stream->CR &= ~(DMA_SxCR_EN);
+	dma_stream->NDTR = DShotPacketLength;
+	dma_stream->CR |= (DMA_SxCR_TCIE);
+	dma_stream->M0AR = dshot_incoming_buffer[2];
+	dma_stream->PAR = &tim->CCR3;
+	dma_stream->CR |= (DMA_SxCR_EN);
 
-		TIM_TypeDef *tim = &htim3.Instance;
-		tim->EGR = TIM_EGR_UG;
-	}
-#endif
+	hdma = htim->hdma[Tim2Chan4DmaIndex];
+	dma_stream = hdma->Instance;
+	dma_stream->CR &= ~(DMA_SxCR_EN);
+	dma_stream->NDTR = DShotPacketLength;
+	dma_stream->CR |= (DMA_SxCR_TCIE);
+	dma_stream->M0AR = dshot_incoming_buffer[3];
+	dma_stream->PAR = &tim->CCR4;
+	dma_stream->CR |= (DMA_SxCR_EN);
+
 }
 
 /* USER CODE END 0 */
@@ -251,6 +288,7 @@ int main(void)
   /* USER CODE BEGIN WHILE */
   while (1)
   {
+	  recv_dshot();
 	  fire_dshot();
 	  HAL_Delay(100);
 
@@ -619,19 +657,48 @@ static void MX_TIM2_Init(void)
   {
     Error_Handler();
   }
+  sConfigIC.ICSelection = TIM_ICSELECTION_INDIRECTTI;
   if (HAL_TIM_IC_ConfigChannel(&htim2, &sConfigIC, TIM_CHANNEL_2) != HAL_OK)
   {
     Error_Handler();
   }
+  sConfigIC.ICSelection = TIM_ICSELECTION_DIRECTTI;
   if (HAL_TIM_IC_ConfigChannel(&htim2, &sConfigIC, TIM_CHANNEL_3) != HAL_OK)
   {
     Error_Handler();
   }
+  sConfigIC.ICSelection = TIM_ICSELECTION_INDIRECTTI;
   if (HAL_TIM_IC_ConfigChannel(&htim2, &sConfigIC, TIM_CHANNEL_4) != HAL_OK)
   {
     Error_Handler();
   }
   /* USER CODE BEGIN TIM2_Init 2 */
+
+  TIM_HandleTypeDef *htim = &htim2;
+  TIM_TypeDef *tim = htim->Instance;
+
+  tim->CR1 &= ~(TIM_CR1_CEN);
+  tim->CR2 &= ~(TIM_CR2_CCDS); /* dma request sent when CCx event occurs */
+  tim->DIER |= (TIM_DIER_CC1DE | TIM_DIER_CC2DE | TIM_DIER_CC3DE | TIM_DIER_CC4DE);
+  tim->CCER |= (TIM_CCER_CC1E | TIM_CCER_CC2E | TIM_CCER_CC3E | TIM_CCER_CC4E);
+  tim->CCER &= ~(TIM_CCER_CC1P_Msk | TIM_CCER_CC1NP_Msk);
+  tim->CCER &= ~(TIM_CCER_CC2P_Msk | TIM_CCER_CC2NP_Msk);
+  tim->CCER &= ~(TIM_CCER_CC3P_Msk | TIM_CCER_CC3NP_Msk);
+  tim->CCER &= ~(TIM_CCER_CC4P_Msk | TIM_CCER_CC4NP_Msk);
+
+  /* as input channel CCxNP/CCxP == 0/1 channel is sensitive to inverted edge */
+  tim->CCER &= ~(TIM_CCER_CC1NP);
+  tim->CCER &= ~(TIM_CCER_CC2NP);
+  tim->CCER &= ~(TIM_CCER_CC3NP);
+  tim->CCER &= ~(TIM_CCER_CC4NP);
+  // tim->CCER |= (TIM_CCER_CC1P);
+  tim->CCER |= (TIM_CCER_CC2P); /* channel 2 is remap 1. sensitive to inverted edge */
+  // tim->CCER |= (TIM_CCER_CC3P);
+  tim->CCER |= (TIM_CCER_CC4P); /* channel 4 is remap 3. sensitive to inverted edge */
+
+  tim->DCR = (13 << TIM_DCR_DBA_Pos) | ((DShotChannels - 1) << TIM_DCR_DBL_Pos); /* start at CCR1. load 4 channels */
+
+  tim->CR1 |= (TIM_CR1_CEN);
 
   /* USER CODE END TIM2_Init 2 */
 
@@ -713,9 +780,9 @@ static void MX_TIM3_Init(void)
   TIM_TypeDef *tim = TIM3;
   tim->CR1 &= ~(TIM_CR1_CEN);
   tim->ARR = DShotPeriod;
-  tim->CCR1 = 0; // 20 - 1;
-  tim->CCR2 = 0; // 150 - 1; /* 1 */
-  tim->CCR3 = 0; // 75 - 1; /* 1 */
+  tim->CCR1 = 0;
+  tim->CCR2 = 0;
+  tim->CCR3 = 0;
   tim->CCR4 = 0;
   tim->CCER |= (TIM_CCER_CC1E | TIM_CCER_CC2E | TIM_CCER_CC3E | TIM_CCER_CC4E);
   // tim->DIER |= (TIM_DIER_UIE);
@@ -826,7 +893,7 @@ static void MX_TIM5_Init(void)
 
   TIM_ClockConfigTypeDef sClockSourceConfig = {0};
   TIM_MasterConfigTypeDef sMasterConfig = {0};
-  TIM_OC_InitTypeDef sConfigOC = {0};
+  TIM_IC_InitTypeDef sConfigIC = {0};
 
   /* USER CODE BEGIN TIM5_Init 1 */
 
@@ -846,7 +913,7 @@ static void MX_TIM5_Init(void)
   {
     Error_Handler();
   }
-  if (HAL_TIM_PWM_Init(&htim5) != HAL_OK)
+  if (HAL_TIM_IC_Init(&htim5) != HAL_OK)
   {
     Error_Handler();
   }
@@ -856,30 +923,32 @@ static void MX_TIM5_Init(void)
   {
     Error_Handler();
   }
-  sConfigOC.OCMode = TIM_OCMODE_PWM1;
-  sConfigOC.Pulse = 0;
-  sConfigOC.OCPolarity = TIM_OCPOLARITY_HIGH;
-  sConfigOC.OCFastMode = TIM_OCFAST_DISABLE;
-  if (HAL_TIM_PWM_ConfigChannel(&htim5, &sConfigOC, TIM_CHANNEL_1) != HAL_OK)
+  sConfigIC.ICPolarity = TIM_INPUTCHANNELPOLARITY_RISING;
+  sConfigIC.ICSelection = TIM_ICSELECTION_DIRECTTI;
+  sConfigIC.ICPrescaler = TIM_ICPSC_DIV1;
+  sConfigIC.ICFilter = 0;
+  if (HAL_TIM_IC_ConfigChannel(&htim5, &sConfigIC, TIM_CHANNEL_1) != HAL_OK)
   {
     Error_Handler();
   }
-  if (HAL_TIM_PWM_ConfigChannel(&htim5, &sConfigOC, TIM_CHANNEL_2) != HAL_OK)
+  sConfigIC.ICSelection = TIM_ICSELECTION_INDIRECTTI;
+  if (HAL_TIM_IC_ConfigChannel(&htim5, &sConfigIC, TIM_CHANNEL_2) != HAL_OK)
   {
     Error_Handler();
   }
-  if (HAL_TIM_PWM_ConfigChannel(&htim5, &sConfigOC, TIM_CHANNEL_3) != HAL_OK)
+  sConfigIC.ICSelection = TIM_ICSELECTION_DIRECTTI;
+  if (HAL_TIM_IC_ConfigChannel(&htim5, &sConfigIC, TIM_CHANNEL_3) != HAL_OK)
   {
     Error_Handler();
   }
-  if (HAL_TIM_PWM_ConfigChannel(&htim5, &sConfigOC, TIM_CHANNEL_4) != HAL_OK)
+  sConfigIC.ICSelection = TIM_ICSELECTION_INDIRECTTI;
+  if (HAL_TIM_IC_ConfigChannel(&htim5, &sConfigIC, TIM_CHANNEL_4) != HAL_OK)
   {
     Error_Handler();
   }
   /* USER CODE BEGIN TIM5_Init 2 */
 
   /* USER CODE END TIM5_Init 2 */
-  HAL_TIM_MspPostInit(&htim5);
 
 }
 
@@ -1149,11 +1218,36 @@ static void MX_DMA_Init(void)
 
   /* DMA controller clock enable */
   __HAL_RCC_DMA1_CLK_ENABLE();
+  __HAL_RCC_DMA2_CLK_ENABLE();
 
   /* DMA interrupt init */
   /* DMA1_Stream0_IRQn interrupt configuration */
   HAL_NVIC_SetPriority(DMA1_Stream0_IRQn, 0, 0);
   HAL_NVIC_EnableIRQ(DMA1_Stream0_IRQn);
+  /* DMA1_Stream1_IRQn interrupt configuration */
+  HAL_NVIC_SetPriority(DMA1_Stream1_IRQn, 0, 0);
+  HAL_NVIC_EnableIRQ(DMA1_Stream1_IRQn);
+  /* DMA1_Stream2_IRQn interrupt configuration */
+  HAL_NVIC_SetPriority(DMA1_Stream2_IRQn, 0, 0);
+  HAL_NVIC_EnableIRQ(DMA1_Stream2_IRQn);
+  /* DMA1_Stream3_IRQn interrupt configuration */
+  HAL_NVIC_SetPriority(DMA1_Stream3_IRQn, 0, 0);
+  HAL_NVIC_EnableIRQ(DMA1_Stream3_IRQn);
+  /* DMA1_Stream4_IRQn interrupt configuration */
+  HAL_NVIC_SetPriority(DMA1_Stream4_IRQn, 0, 0);
+  HAL_NVIC_EnableIRQ(DMA1_Stream4_IRQn);
+  /* DMA1_Stream5_IRQn interrupt configuration */
+  HAL_NVIC_SetPriority(DMA1_Stream5_IRQn, 0, 0);
+  HAL_NVIC_EnableIRQ(DMA1_Stream5_IRQn);
+  /* DMA1_Stream6_IRQn interrupt configuration */
+  HAL_NVIC_SetPriority(DMA1_Stream6_IRQn, 0, 0);
+  HAL_NVIC_EnableIRQ(DMA1_Stream6_IRQn);
+  /* DMA1_Stream7_IRQn interrupt configuration */
+  HAL_NVIC_SetPriority(DMA1_Stream7_IRQn, 0, 0);
+  HAL_NVIC_EnableIRQ(DMA1_Stream7_IRQn);
+  /* DMA2_Stream0_IRQn interrupt configuration */
+  HAL_NVIC_SetPriority(DMA2_Stream0_IRQn, 0, 0);
+  HAL_NVIC_EnableIRQ(DMA2_Stream0_IRQn);
 
 }
 
