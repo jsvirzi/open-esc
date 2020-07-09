@@ -95,7 +95,7 @@ static void MX_USART2_UART_Init(void);
 #define DShotWordLength (16)
 #define DShotPacketLength (DShotWordLength + 1)
 uint32_t dshot_ccr_buffer[DShotPacketLength][DShotChannels] __attribute__ ((aligned(4), section(".dma_buffer")));
-uint32_t dshot_incoming_buffer[DShotChannels][DShotWordLength] __attribute__ ((aligned(4), section(".dma_buffer")));
+uint32_t dshot_incoming_buffer[DShotChannels][2 * DShotWordLength] __attribute__ ((aligned(4), section(".dma_buffer")));
 static const uint32_t DShotPeriod = 199; /* 200 - 1 */
 static const uint32_t DShotHi = 149; /* 75% of 200 - 1 */
 static const uint32_t DShotLo = 74; /* 50% of 75% of 200 - 1 */
@@ -190,10 +190,12 @@ void recv_dshot()
 	const int Tim2Chan3DmaIndex = 3;
 	const int Tim2Chan4DmaIndex = 4;
 
+	const uint32_t xfer_size = 2 * DShotWordLength;
+
 	hdma = htim->hdma[Tim2Chan1DmaIndex];
 	dma_stream = hdma->Instance;
 	dma_stream->CR &= ~(DMA_SxCR_EN);
-	dma_stream->NDTR = DShotPacketLength;
+	dma_stream->NDTR = xfer_size;
 	dma_stream->CR |= (DMA_SxCR_TCIE);
 	dma_stream->M0AR = dshot_incoming_buffer[0];
 	dma_stream->PAR = &tim->CCR1;
@@ -202,7 +204,7 @@ void recv_dshot()
 	hdma = htim->hdma[Tim2Chan2DmaIndex];
 	dma_stream = hdma->Instance;
 	dma_stream->CR &= ~(DMA_SxCR_EN);
-	dma_stream->NDTR = DShotPacketLength;
+	dma_stream->NDTR = xfer_size;
 	dma_stream->CR |= (DMA_SxCR_TCIE);
 	dma_stream->M0AR = dshot_incoming_buffer[1];
 	dma_stream->PAR = &tim->CCR2;
@@ -211,7 +213,7 @@ void recv_dshot()
 	hdma = htim->hdma[Tim2Chan3DmaIndex];
 	dma_stream = hdma->Instance;
 	dma_stream->CR &= ~(DMA_SxCR_EN);
-	dma_stream->NDTR = DShotPacketLength;
+	dma_stream->NDTR = xfer_size;
 	dma_stream->CR |= (DMA_SxCR_TCIE);
 	dma_stream->M0AR = dshot_incoming_buffer[2];
 	dma_stream->PAR = &tim->CCR3;
@@ -220,12 +222,48 @@ void recv_dshot()
 	hdma = htim->hdma[Tim2Chan4DmaIndex];
 	dma_stream = hdma->Instance;
 	dma_stream->CR &= ~(DMA_SxCR_EN);
-	dma_stream->NDTR = DShotPacketLength;
+	dma_stream->NDTR = xfer_size;
 	dma_stream->CR |= (DMA_SxCR_TCIE);
 	dma_stream->M0AR = dshot_incoming_buffer[3];
 	dma_stream->PAR = &tim->CCR4;
 	dma_stream->CR |= (DMA_SxCR_EN);
 
+}
+
+int analyze_shot(int channel, uint16_t *result)
+{
+	uint32_t acc1 = 0, acc2 = 0;
+	uint16_t bit_length[16];
+	uint32_t *p = dshot_incoming_buffer[channel];
+	uint32_t delta;
+	for (int i = 0; i < DShotWordLength; ++i) {
+		uint32_t t0 = p[2*i];
+		delta = p[2*i+1] - t0;
+		bit_length[i] = delta;
+		delta = p[2*i+2] - t0;
+		acc1 += delta;
+		acc2 += (delta * delta);
+	}
+	uint32_t mean = acc1 / DShotWordLength;
+	uint32_t var2 = acc2 / DShotWordLength;
+	uint32_t var2_max = 100 + mean * mean;
+	uint32_t thresh0 = mean / 3;
+	uint32_t thresh1 = 2 * mean / 3;
+	uint16_t dshot = 0;
+	int errors = 0;
+	if (var2 <= var2_max) { /* calculated mean is a good central value */
+		for (int i = 0; i < DShotWordLength; ++i) {
+			dshot = (dshot << 1);
+			if (bit_length[i] > thresh1) {
+				dshot = dshot | 1;
+			} else if (bit_length[i] < thresh0) {
+			} else {
+				++errors;
+			}
+		}
+	}
+	*result = dshot;
+	return errors;
 }
 
 /* USER CODE END 0 */
@@ -286,11 +324,14 @@ int main(void)
 
   /* Infinite loop */
   /* USER CODE BEGIN WHILE */
+  uint16_t dshot;
+  int rc, channel = 0;
   while (1)
   {
 	  recv_dshot();
 	  fire_dshot();
 	  HAL_Delay(100);
+	  rc = analyze_shot(channel, &dshot);
 
     /* USER CODE END WHILE */
 
@@ -649,7 +690,7 @@ static void MX_TIM2_Init(void)
   {
     Error_Handler();
   }
-  sConfigIC.ICPolarity = TIM_INPUTCHANNELPOLARITY_RISING;
+  sConfigIC.ICPolarity = TIM_INPUTCHANNELPOLARITY_BOTHEDGE;
   sConfigIC.ICSelection = TIM_ICSELECTION_DIRECTTI;
   sConfigIC.ICPrescaler = TIM_ICPSC_DIV1;
   sConfigIC.ICFilter = 0;
@@ -657,17 +698,14 @@ static void MX_TIM2_Init(void)
   {
     Error_Handler();
   }
-  sConfigIC.ICSelection = TIM_ICSELECTION_INDIRECTTI;
   if (HAL_TIM_IC_ConfigChannel(&htim2, &sConfigIC, TIM_CHANNEL_2) != HAL_OK)
   {
     Error_Handler();
   }
-  sConfigIC.ICSelection = TIM_ICSELECTION_DIRECTTI;
   if (HAL_TIM_IC_ConfigChannel(&htim2, &sConfigIC, TIM_CHANNEL_3) != HAL_OK)
   {
     Error_Handler();
   }
-  sConfigIC.ICSelection = TIM_ICSELECTION_INDIRECTTI;
   if (HAL_TIM_IC_ConfigChannel(&htim2, &sConfigIC, TIM_CHANNEL_4) != HAL_OK)
   {
     Error_Handler();
@@ -686,15 +724,15 @@ static void MX_TIM2_Init(void)
   tim->CCER &= ~(TIM_CCER_CC3P_Msk | TIM_CCER_CC3NP_Msk);
   tim->CCER &= ~(TIM_CCER_CC4P_Msk | TIM_CCER_CC4NP_Msk);
 
-  /* as input channel CCxNP/CCxP == 0/1 channel is sensitive to inverted edge */
+  /* as input channel CCxNP/CCxP == 1/1 channel is sensitive to both edges */
   tim->CCER &= ~(TIM_CCER_CC1NP);
   tim->CCER &= ~(TIM_CCER_CC2NP);
   tim->CCER &= ~(TIM_CCER_CC3NP);
   tim->CCER &= ~(TIM_CCER_CC4NP);
-  // tim->CCER |= (TIM_CCER_CC1P);
-  tim->CCER |= (TIM_CCER_CC2P); /* channel 2 is remap 1. sensitive to inverted edge */
-  // tim->CCER |= (TIM_CCER_CC3P);
-  tim->CCER |= (TIM_CCER_CC4P); /* channel 4 is remap 3. sensitive to inverted edge */
+  tim->CCER |= (TIM_CCER_CC1P);
+  tim->CCER |= (TIM_CCER_CC2P);
+  tim->CCER |= (TIM_CCER_CC3P);
+  tim->CCER |= (TIM_CCER_CC4P);
 
   tim->DCR = (13 << TIM_DCR_DBA_Pos) | ((DShotChannels - 1) << TIM_DCR_DBL_Pos); /* start at CCR1. load 4 channels */
 
@@ -931,17 +969,14 @@ static void MX_TIM5_Init(void)
   {
     Error_Handler();
   }
-  sConfigIC.ICSelection = TIM_ICSELECTION_INDIRECTTI;
   if (HAL_TIM_IC_ConfigChannel(&htim5, &sConfigIC, TIM_CHANNEL_2) != HAL_OK)
   {
     Error_Handler();
   }
-  sConfigIC.ICSelection = TIM_ICSELECTION_DIRECTTI;
   if (HAL_TIM_IC_ConfigChannel(&htim5, &sConfigIC, TIM_CHANNEL_3) != HAL_OK)
   {
     Error_Handler();
   }
-  sConfigIC.ICSelection = TIM_ICSELECTION_INDIRECTTI;
   if (HAL_TIM_IC_ConfigChannel(&htim5, &sConfigIC, TIM_CHANNEL_4) != HAL_OK)
   {
     Error_Handler();
