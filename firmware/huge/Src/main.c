@@ -181,18 +181,18 @@ void send_dshot(uint16_t pwm[4], unsigned int send_flag)
 
 void recv_dshot()
 {
-	TIM_HandleTypeDef *htim = &htim2;
+	TIM_HandleTypeDef *htim = &htim5;
 	TIM_TypeDef *tim = htim->Instance;
 	DMA_HandleTypeDef *hdma;
 	DMA_Stream_TypeDef *dma_stream;
-	const int Tim2Chan1DmaIndex = 1;
-	const int Tim2Chan2DmaIndex = 2;
-	const int Tim2Chan3DmaIndex = 3;
-	const int Tim2Chan4DmaIndex = 4;
+	const int TimChan1DmaIndex = 1;
+	const int TimChan2DmaIndex = 2;
+	const int TimChan3DmaIndex = 3;
+	const int TimChan4DmaIndex = 4;
 
 	const uint32_t xfer_size = 2 * DShotWordLength;
 
-	hdma = htim->hdma[Tim2Chan1DmaIndex];
+	hdma = htim->hdma[TimChan1DmaIndex];
 	dma_stream = hdma->Instance;
 	dma_stream->CR &= ~(DMA_SxCR_EN);
 	dma_stream->NDTR = xfer_size;
@@ -201,7 +201,7 @@ void recv_dshot()
 	dma_stream->PAR = &tim->CCR1;
 	dma_stream->CR |= (DMA_SxCR_EN);
 
-	hdma = htim->hdma[Tim2Chan2DmaIndex];
+	hdma = htim->hdma[TimChan2DmaIndex];
 	dma_stream = hdma->Instance;
 	dma_stream->CR &= ~(DMA_SxCR_EN);
 	dma_stream->NDTR = xfer_size;
@@ -210,7 +210,7 @@ void recv_dshot()
 	dma_stream->PAR = &tim->CCR2;
 	dma_stream->CR |= (DMA_SxCR_EN);
 
-	hdma = htim->hdma[Tim2Chan3DmaIndex];
+	hdma = htim->hdma[TimChan3DmaIndex];
 	dma_stream = hdma->Instance;
 	dma_stream->CR &= ~(DMA_SxCR_EN);
 	dma_stream->NDTR = xfer_size;
@@ -219,7 +219,7 @@ void recv_dshot()
 	dma_stream->PAR = &tim->CCR3;
 	dma_stream->CR |= (DMA_SxCR_EN);
 
-	hdma = htim->hdma[Tim2Chan4DmaIndex];
+	hdma = htim->hdma[TimChan4DmaIndex];
 	dma_stream = hdma->Instance;
 	dma_stream->CR &= ~(DMA_SxCR_EN);
 	dma_stream->NDTR = xfer_size;
@@ -232,11 +232,11 @@ void recv_dshot()
 
 int analyze_shot(int channel, uint16_t *result)
 {
-	uint32_t acc1 = 0, acc2 = 0;
+	uint32_t acc1 = 0, acc2 = 0, acc0 = DShotWordLength - 1;
 	uint16_t bit_length[16];
 	uint32_t *p = dshot_incoming_buffer[channel];
 	uint32_t delta;
-	for (int i = 0; i < DShotWordLength; ++i) {
+	for (int i = 0; i < acc0; ++i) {
 		uint32_t t0 = p[2*i];
 		delta = p[2*i+1] - t0;
 		bit_length[i] = delta;
@@ -244,11 +244,12 @@ int analyze_shot(int channel, uint16_t *result)
 		acc1 += delta;
 		acc2 += (delta * delta);
 	}
-	uint32_t mean = acc1 / DShotWordLength;
-	uint32_t var2 = acc2 / DShotWordLength;
+	uint32_t mean = acc1 / acc0;
+	uint32_t var2 = acc2 / acc0;
 	uint32_t var2_max = 100 + mean * mean;
-	uint32_t thresh0 = mean / 3;
-	uint32_t thresh1 = 2 * mean / 3;
+	uint32_t tolerance = mean / 20; /* 5% tolerance */
+	uint32_t thresh1 = 3 * mean / 4 - tolerance;
+	uint32_t thresh0 = thresh1 / 2 + tolerance;
 	uint16_t dshot = 0;
 	int errors = 0;
 	if (var2 <= var2_max) { /* calculated mean is a good central value */
@@ -725,10 +726,10 @@ static void MX_TIM2_Init(void)
   tim->CCER &= ~(TIM_CCER_CC4P_Msk | TIM_CCER_CC4NP_Msk);
 
   /* as input channel CCxNP/CCxP == 1/1 channel is sensitive to both edges */
-  tim->CCER &= ~(TIM_CCER_CC1NP);
-  tim->CCER &= ~(TIM_CCER_CC2NP);
-  tim->CCER &= ~(TIM_CCER_CC3NP);
-  tim->CCER &= ~(TIM_CCER_CC4NP);
+  tim->CCER |= (TIM_CCER_CC1NP);
+  tim->CCER |= (TIM_CCER_CC2NP);
+  tim->CCER |= (TIM_CCER_CC3NP);
+  tim->CCER |= (TIM_CCER_CC4NP);
   tim->CCER |= (TIM_CCER_CC1P);
   tim->CCER |= (TIM_CCER_CC2P);
   tim->CCER |= (TIM_CCER_CC3P);
@@ -939,7 +940,7 @@ static void MX_TIM5_Init(void)
   htim5.Instance = TIM5;
   htim5.Init.Prescaler = 0;
   htim5.Init.CounterMode = TIM_COUNTERMODE_UP;
-  htim5.Init.Period = 0;
+  htim5.Init.Period = 0xffffffff;
   htim5.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
   htim5.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_DISABLE;
   if (HAL_TIM_Base_Init(&htim5) != HAL_OK)
@@ -961,7 +962,7 @@ static void MX_TIM5_Init(void)
   {
     Error_Handler();
   }
-  sConfigIC.ICPolarity = TIM_INPUTCHANNELPOLARITY_RISING;
+  sConfigIC.ICPolarity = TIM_INPUTCHANNELPOLARITY_BOTHEDGE;
   sConfigIC.ICSelection = TIM_ICSELECTION_DIRECTTI;
   sConfigIC.ICPrescaler = TIM_ICPSC_DIV1;
   sConfigIC.ICFilter = 0;
@@ -982,6 +983,32 @@ static void MX_TIM5_Init(void)
     Error_Handler();
   }
   /* USER CODE BEGIN TIM5_Init 2 */
+
+  TIM_HandleTypeDef *htim = &htim5;
+  TIM_TypeDef *tim = htim->Instance;
+
+  tim->CR1 &= ~(TIM_CR1_CEN);
+  tim->CR2 &= ~(TIM_CR2_CCDS); /* dma request sent when CCx event occurs */
+  tim->DIER |= (TIM_DIER_CC1DE | TIM_DIER_CC2DE | TIM_DIER_CC3DE | TIM_DIER_CC4DE);
+  tim->CCER |= (TIM_CCER_CC1E | TIM_CCER_CC2E | TIM_CCER_CC3E | TIM_CCER_CC4E);
+  tim->CCER &= ~(TIM_CCER_CC1P_Msk | TIM_CCER_CC1NP_Msk);
+  tim->CCER &= ~(TIM_CCER_CC2P_Msk | TIM_CCER_CC2NP_Msk);
+  tim->CCER &= ~(TIM_CCER_CC3P_Msk | TIM_CCER_CC3NP_Msk);
+  tim->CCER &= ~(TIM_CCER_CC4P_Msk | TIM_CCER_CC4NP_Msk);
+
+  /* as input channel CCxNP/CCxP == 1/1 channel is sensitive to both edges */
+  tim->CCER |= (TIM_CCER_CC1NP);
+  tim->CCER |= (TIM_CCER_CC2NP);
+  tim->CCER |= (TIM_CCER_CC3NP);
+  tim->CCER |= (TIM_CCER_CC4NP);
+  tim->CCER |= (TIM_CCER_CC1P);
+  tim->CCER |= (TIM_CCER_CC2P);
+  tim->CCER |= (TIM_CCER_CC3P);
+  tim->CCER |= (TIM_CCER_CC4P);
+
+  tim->DCR = (13 << TIM_DCR_DBA_Pos) | ((DShotChannels - 1) << TIM_DCR_DBL_Pos); /* start at CCR1. load 4 channels */
+
+  tim->CR1 |= (TIM_CR1_CEN);
 
   /* USER CODE END TIM5_Init 2 */
 
