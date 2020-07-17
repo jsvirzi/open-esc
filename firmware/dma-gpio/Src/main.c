@@ -73,74 +73,96 @@ UART_HandleTypeDef huart3;
 
 /* USER CODE BEGIN PV */
 
+#define Phases (6)
+#define TimerChannels (4)
+#define DmaTransferSize (Phases * TimerChannels)
 uint32_t ccr_buffer[2][6][4] __attribute__ ((aligned(4), section(".dma_buffer")));
 
-int initialize_dma_buffers(void)
+int initialize_dma(void)
 {
 	int k = 0, phase;
 	uint32_t duration = 1000 - 1;
 	/* firing order a1, b2, c1, a2, b1, c2 */
-		/* phase 0 */
-		phase = 0;
-		ccr_buffer[0][phase][0] = duration; /* a1 */
-		ccr_buffer[0][phase][1] = 0;
-		ccr_buffer[0][phase][2] = 0;
-		ccr_buffer[0][phase][3] = 2400 - 1; /* half */
-		ccr_buffer[1][phase][0] = 0;
-		ccr_buffer[1][phase][1] = 0;
-		ccr_buffer[1][phase][2] = 0;
-		ccr_buffer[1][phase][3] = 2400 - 1; /* half */
-		/* phase 1 */
-		phase = 1;
-		ccr_buffer[0][phase][0] = duration; /* a1 */
-		ccr_buffer[0][phase][1] = 0;
-		ccr_buffer[0][phase][2] = 0;
-		ccr_buffer[0][phase][3] = 2400 - 1; /* half */
-		ccr_buffer[1][phase][0] = 0;
-		ccr_buffer[1][phase][1] = duration; /* b2 */
-		ccr_buffer[1][phase][2] = 0;
-		ccr_buffer[1][phase][3] = 2400 - 1; /* half */
-		/* phase 2 */
-		phase = 2;
-		ccr_buffer[0][phase][0] = 0;
-		ccr_buffer[0][phase][1] = 0;
-		ccr_buffer[0][phase][2] = duration; /* c1 */
-		ccr_buffer[0][phase][3] = 2400 - 1; /* half */
-		ccr_buffer[1][phase][0] = 0;
-		ccr_buffer[1][phase][1] = duration; /* b2 */
-		ccr_buffer[1][phase][2] = 0;
-		ccr_buffer[1][phase][3] = 2400 - 1; /* half */
-		/* phase 3 */
-		phase = 3;
-		ccr_buffer[0][phase][0] = 0;
-		ccr_buffer[0][phase][1] = 0;
-		ccr_buffer[0][phase][2] = duration; /* c1 */
-		ccr_buffer[0][phase][3] = 2400 - 1; /* half */
-		ccr_buffer[1][phase][0] = duration; /* a2 */
-		ccr_buffer[1][phase][1] = 0;
-		ccr_buffer[1][phase][2] = 0;
-		ccr_buffer[1][phase][3] = 2400 - 1; /* half */
-		/* phase 4 */
-		phase = 4;
-		ccr_buffer[0][phase][0] = 0;
-		ccr_buffer[0][phase][1] = duration; /* b1 */
-		ccr_buffer[0][phase][2] = 0;
-		ccr_buffer[0][phase][3] = 2400 - 1; /* half */
-		ccr_buffer[1][phase][0] = duration; /* a2 */
-		ccr_buffer[1][phase][1] = 0;
-		ccr_buffer[1][phase][2] = 0;
-		ccr_buffer[1][phase][3] = 2400 - 1; /* half */
-		/* phase 5 */
-		phase = 5;
-		ccr_buffer[0][phase][0] = 0;
-		ccr_buffer[0][phase][1] = duration; /* b1 */
-		ccr_buffer[0][phase][2] = 0;
-		ccr_buffer[0][phase][3] = 2400 - 1; /* half */
-		ccr_buffer[1][phase][0] = 0;
-		ccr_buffer[1][phase][1] = 0;
-		ccr_buffer[1][phase][2] = duration; /* c2 */
-		ccr_buffer[1][phase][3] = 2400 - 1; /* half */
-	}
+	/* phase 0 */
+	phase = 0;
+	ccr_buffer[0][phase][0] = duration; /* a1 */
+	ccr_buffer[0][phase][1] = 0;
+	ccr_buffer[0][phase][2] = 0;
+	ccr_buffer[0][phase][3] = 2400 - 1; /* half */
+	ccr_buffer[1][phase][0] = 0;
+	ccr_buffer[1][phase][1] = 0;
+	ccr_buffer[1][phase][2] = 0;
+	ccr_buffer[1][phase][3] = 2400 - 1; /* half */
+	/* phase 1 */
+	phase = 1;
+	ccr_buffer[0][phase][0] = duration; /* a1 */
+	ccr_buffer[0][phase][1] = 0;
+	ccr_buffer[0][phase][2] = 0;
+	ccr_buffer[0][phase][3] = 0;
+	ccr_buffer[1][phase][0] = 0;
+	ccr_buffer[1][phase][1] = duration; /* b2 */
+	ccr_buffer[1][phase][2] = 0;
+	ccr_buffer[1][phase][3] = 0;
+	/* phase 2 */
+	phase = 2;
+	ccr_buffer[0][phase][0] = 0;
+	ccr_buffer[0][phase][1] = 0;
+	ccr_buffer[0][phase][2] = duration; /* c1 */
+	ccr_buffer[0][phase][3] = 0;
+	ccr_buffer[1][phase][0] = 0;
+	ccr_buffer[1][phase][1] = duration; /* b2 */
+	ccr_buffer[1][phase][2] = 0;
+	ccr_buffer[1][phase][3] = 0;
+	/* phase 3 */
+	phase = 3;
+	ccr_buffer[0][phase][0] = 0;
+	ccr_buffer[0][phase][1] = 0;
+	ccr_buffer[0][phase][2] = duration; /* c1 */
+	ccr_buffer[0][phase][3] = 0;
+	ccr_buffer[1][phase][0] = duration; /* a2 */
+	ccr_buffer[1][phase][1] = 0;
+	ccr_buffer[1][phase][2] = 0;
+	ccr_buffer[1][phase][3] = 0;
+	/* phase 4 */
+	phase = 4;
+	ccr_buffer[0][phase][0] = 0;
+	ccr_buffer[0][phase][1] = duration; /* b1 */
+	ccr_buffer[0][phase][2] = 0;
+	ccr_buffer[0][phase][3] = 0;
+	ccr_buffer[1][phase][0] = duration; /* a2 */
+	ccr_buffer[1][phase][1] = 0;
+	ccr_buffer[1][phase][2] = 0;
+	ccr_buffer[1][phase][3] = 0;
+	/* phase 5 */
+	phase = 5;
+	ccr_buffer[0][phase][0] = 0;
+	ccr_buffer[0][phase][1] = duration; /* b1 */
+	ccr_buffer[0][phase][2] = 0;
+	ccr_buffer[0][phase][3] = 0;
+	ccr_buffer[1][phase][0] = 0;
+	ccr_buffer[1][phase][1] = 0;
+	ccr_buffer[1][phase][2] = duration; /* c2 */
+	ccr_buffer[1][phase][3] = 0;
+
+	return 0;
+}
+
+int start_dma(void)
+{
+	DMA_HandleTypeDef *hdma = htim3.hdma[0];
+	DMA_Stream_TypeDef *dma_stream = hdma->Instance;
+	dma_stream->NDTR = DmaTransferSize;
+	dma_stream->CR |= (DMA_SxCR_TCIE);
+	dma_stream->CR |= (DMA_SxCR_CIRC);
+	dma_stream->CR |= (DMA_SxCR_EN);
+
+	TIM_TypeDef *tim;
+	tim = &htim3.Instance;
+	tim->EGR = TIM_EGR_UG;
+	tim = &htim4.Instance;
+	tim->EGR = TIM_EGR_UG;
+
+	return 0;
 }
 
 /* USER CODE END PV */
@@ -216,6 +238,8 @@ int main(void)
   /* USER CODE BEGIN 2 */
 
   initialize_dma();
+
+  start_dma();
 
   /* USER CODE END 2 */
 
@@ -645,7 +669,7 @@ static void MX_TIM3_Init(void)
   {
     Error_Handler();
   }
-  sSlaveConfig.SlaveMode = TIM_SLAVEMODE_RESET;
+  sSlaveConfig.SlaveMode = TIM_SLAVEMODE_TRIGGER;
   sSlaveConfig.InputTrigger = TIM_TS_ITR1;
   if (HAL_TIM_SlaveConfigSynchro(&htim3, &sSlaveConfig) != HAL_OK)
   {
@@ -685,16 +709,15 @@ static void MX_TIM3_Init(void)
 
   tim->CR1 &= ~(TIM_CR1_CEN);
   tim->ARR = 4800 - 1; /* 20us = 240,000,000 / 4800 = 50,000 ticks */
-  tim->CCR1 = 1000 - 1;
-  tim->CCR2 = 2000 - 1;
-  tim->CCR3 = 3000 - 1;
-  tim->CCR4 = 4000 - 1;
+  tim->CCR1 = 0;
+  tim->CCR2 = 0;
+  tim->CCR3 = 0;
+  tim->CCR4 = 0;
   tim->CCER |= (TIM_CCER_CC1E | TIM_CCER_CC2E | TIM_CCER_CC3E | TIM_CCER_CC4E);
   // tim->DIER |= (TIM_DIER_UIE);
 
   tim->DCR = (13 << TIM_DCR_DBA_Pos) | ((4 - 1) << TIM_DCR_DBL_Pos); /* start at CCR1. load 4 channels */
 
-  DMA_HandleTypeDef *hdma = htim3.hdma[0];
   DMA_Stream_TypeDef *dma_stream = hdma->Instance;
   dma_stream->PAR = &tim->DMAR;
   dma_stream->M0AR = ccr_buffer[0];
@@ -708,7 +731,6 @@ static void MX_TIM3_Init(void)
   tim->DIER |= (TIM_DIER_UDE); /* enable dma request for updates */
 
   tim->CR1 |= (TIM_CR1_CEN);
-
 
   /* USER CODE END TIM3_Init 2 */
   HAL_TIM_MspPostInit(&htim3);
@@ -754,7 +776,7 @@ static void MX_TIM4_Init(void)
   {
     Error_Handler();
   }
-  sSlaveConfig.SlaveMode = TIM_SLAVEMODE_RESET;
+  sSlaveConfig.SlaveMode = TIM_SLAVEMODE_TRIGGER;
   sSlaveConfig.InputTrigger = TIM_TS_ITR1;
   if (HAL_TIM_SlaveConfigSynchro(&htim4, &sSlaveConfig) != HAL_OK)
   {
@@ -787,6 +809,35 @@ static void MX_TIM4_Init(void)
     Error_Handler();
   }
   /* USER CODE BEGIN TIM4_Init 2 */
+
+  TIM_HandleTypeDef *htim = &htim4;
+  TIM_TypeDef *tim = htim->Instance;
+  DMA_HandleTypeDef *hdma = htim->hdma[0];
+
+  tim->CR1 &= ~(TIM_CR1_CEN);
+  tim->ARR = 4800 - 1; /* 20us = 240,000,000 / 4800 = 50,000 ticks */
+  tim->CCR1 = 0;
+  tim->CCR2 = 0;
+  tim->CCR3 = 0;
+  tim->CCR4 = 0;
+  tim->CCER |= (TIM_CCER_CC1E | TIM_CCER_CC2E | TIM_CCER_CC3E | TIM_CCER_CC4E);
+  // tim->DIER |= (TIM_DIER_UIE);
+
+  tim->DCR = (13 << TIM_DCR_DBA_Pos) | ((4 - 1) << TIM_DCR_DBL_Pos); /* start at CCR1. load 4 channels */
+
+  DMA_Stream_TypeDef *dma_stream = hdma->Instance;
+  dma_stream->PAR = &tim->DMAR;
+  dma_stream->M0AR = ccr_buffer[1];
+  dma_stream->M1AR = ccr_buffer[1]; /* TODO jsv */
+  dma_stream->NDTR = 24;
+
+  tim->CR1 &= ~(TIM_CR1_ARPE);
+
+  tim->CR2 |= (TIM_CR2_CCDS); /* send dma request when update occurs */
+
+  tim->DIER |= (TIM_DIER_UDE); /* enable dma request for updates */
+
+  tim->CR1 |= (TIM_CR1_CEN);
 
   /* USER CODE END TIM4_Init 2 */
   HAL_TIM_MspPostInit(&htim4);
