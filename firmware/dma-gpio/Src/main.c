@@ -91,7 +91,7 @@ int initialize_dma(void)
 	ccr_buffer[0][phase][3] = 2400 - 1; /* half */
 	ccr_buffer[1][phase][0] = 0;
 	ccr_buffer[1][phase][1] = 0;
-	ccr_buffer[1][phase][2] = 0;
+	ccr_buffer[1][phase][2] = duration;
 	ccr_buffer[1][phase][3] = 2400 - 1; /* half */
 	/* phase 1 */
 	phase = 1;
@@ -149,18 +149,29 @@ int initialize_dma(void)
 
 int start_dma(void)
 {
-	DMA_HandleTypeDef *hdma = htim3.hdma[0];
-	DMA_Stream_TypeDef *dma_stream = hdma->Instance;
+	DMA_HandleTypeDef *hdma;
+	DMA_Stream_TypeDef *dma_stream;
+	TIM_TypeDef *tim;
+
+	hdma = htim3.hdma[0];
+	dma_stream = hdma->Instance;
 	dma_stream->NDTR = DmaTransferSize;
-	dma_stream->CR |= (DMA_SxCR_TCIE);
-	dma_stream->CR |= (DMA_SxCR_CIRC);
+	dma_stream->CR |= (DMA_SxCR_TCIE | DMA_SxCR_CIRC);
 	dma_stream->CR |= (DMA_SxCR_EN);
 
-	TIM_TypeDef *tim;
-	tim = &htim3.Instance;
+	hdma = htim4.hdma[0];
+	dma_stream = hdma->Instance;
+	dma_stream->NDTR = DmaTransferSize;
+	dma_stream->CR |= (DMA_SxCR_TCIE | DMA_SxCR_CIRC);
+	dma_stream->CR |= (DMA_SxCR_EN);
+
+	tim = &htim2.Instance;
+	tim->CR1 |= (TIM_CR1_CEN);
 	tim->EGR = TIM_EGR_UG;
-	tim = &htim4.Instance;
-	tim->EGR = TIM_EGR_UG;
+//	tim = &htim3.Instance;
+//	tim->EGR = TIM_EGR_UG;
+//	tim = &htim4.Instance;
+//	tim->EGR = TIM_EGR_UG;
 
 	return 0;
 }
@@ -598,7 +609,7 @@ static void MX_TIM2_Init(void)
   {
     Error_Handler();
   }
-  sMasterConfig.MasterOutputTrigger = TIM_TRGO_OC1;
+  sMasterConfig.MasterOutputTrigger = TIM_TRGO_ENABLE;
   sMasterConfig.MasterSlaveMode = TIM_MASTERSLAVEMODE_ENABLE;
   if (HAL_TIMEx_MasterConfigSynchronization(&htim2, &sMasterConfig) != HAL_OK)
   {
@@ -675,8 +686,8 @@ static void MX_TIM3_Init(void)
   {
     Error_Handler();
   }
-  sMasterConfig.MasterOutputTrigger = TIM_TRGO_RESET;
-  sMasterConfig.MasterSlaveMode = TIM_MASTERSLAVEMODE_DISABLE;
+  sMasterConfig.MasterOutputTrigger = TIM_TRGO_UPDATE;
+  sMasterConfig.MasterSlaveMode = TIM_MASTERSLAVEMODE_ENABLE;
   if (HAL_TIMEx_MasterConfigSynchronization(&htim3, &sMasterConfig) != HAL_OK)
   {
     Error_Handler();
@@ -730,7 +741,7 @@ static void MX_TIM3_Init(void)
 
   tim->DIER |= (TIM_DIER_UDE); /* enable dma request for updates */
 
-  tim->CR1 |= (TIM_CR1_CEN);
+  // tim->CR1 |= (TIM_CR1_CEN);
 
   /* USER CODE END TIM3_Init 2 */
   HAL_TIM_MspPostInit(&htim3);
@@ -782,8 +793,8 @@ static void MX_TIM4_Init(void)
   {
     Error_Handler();
   }
-  sMasterConfig.MasterOutputTrigger = TIM_TRGO_RESET;
-  sMasterConfig.MasterSlaveMode = TIM_MASTERSLAVEMODE_DISABLE;
+  sMasterConfig.MasterOutputTrigger = TIM_TRGO_UPDATE;
+  sMasterConfig.MasterSlaveMode = TIM_MASTERSLAVEMODE_ENABLE;
   if (HAL_TIMEx_MasterConfigSynchronization(&htim4, &sMasterConfig) != HAL_OK)
   {
     Error_Handler();
@@ -837,7 +848,7 @@ static void MX_TIM4_Init(void)
 
   tim->DIER |= (TIM_DIER_UDE); /* enable dma request for updates */
 
-  tim->CR1 |= (TIM_CR1_CEN);
+  // tim->CR1 |= (TIM_CR1_CEN);
 
   /* USER CODE END TIM4_Init 2 */
   HAL_TIM_MspPostInit(&htim4);
